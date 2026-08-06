@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sticker Rain</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #ffffff;
+      }
+      #site-content {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        z-index: 1;
+        opacity: 0.28;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe
+      id="site-content"
+      src="https://ysyx.200502.xyz/"
+      title="一生一芯"
+    ></iframe>
+    <canvas id="stage"></canvas>
+
+    <script>
+      let fallingEnabled = true;
+      let stickerMesh = null;
+      const siteFrame = document.getElementById("site-content");
+
+      window.addEventListener("message", (event) => {
+        if (
+          event.source !== siteFrame.contentWindow ||
+          event.origin !== "https://ysyx.200502.xyz"
+        ) {
+          return;
+        }
+
+        if (event.data?.type === "sticker-login-success") {
+          fallingEnabled = false;
+          if (stickerMesh) stickerMesh.visible = false;
+        }
+        if (event.data?.type === "sticker-timer-start") {
+          fallingEnabled = true;
+          if (stickerMesh) stickerMesh.visible = true;
+        }
+        if (event.data?.type === "sticker-timer-stop") {
+          fallingEnabled = false;
+          if (stickerMesh) stickerMesh.visible = false;
+        }
+        if (event.data?.type === "sticker-logout") {
+          fallingEnabled = true;
+          if (stickerMesh) stickerMesh.visible = true;
+        }
+      });
+    </script>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+
+      // 1. 固定的核心参数配置
+      const CONFIG = {
+        poolSize: 16, // 同屏随机掉落的贴纸实例总数
+        spawnWidth: 32, // 横向生成范围
+        spawnHeight: 24, // 纵向生成范围
+        positionY: 24, // 粒子重新出现时的顶部 Y 坐标
+        fallDistance: 48, // 粒子从顶部落到底部所经过的距离
+        zDepth: 4, // 粒子在 Z 轴上的随机深度范围
+        zOffset: -6, // 粒子 Z 轴基准偏移
+        windStrength: 1.8, // 风力摆动幅度
+        windFrequency: 0.3, // 风力摆动频率
+        scale: 3, // 贴纸基础缩放
+        rotationSpeed: 0.8, // 旋转速度
+        fallSpeed: 1.8, // 下落速度
+      };
+
+      // 2. 你的真实 PNG 贴纸图片路径（已帮你物归原主）
+      const STICKER_URLS = [
+        "img/s_03.png",
+        "img/s_05.png",
+        "img/s_08.png",
+        "img/s_10.png",
+        "img/scau_emblem.png",
+        "img/ICIL_logo_transparent.png",
+        "img/ysyx_logo.png",
+        "img/coding_vscode.png",
+        "img/coding_github.png",
+        "img/coding_linux.png",
+      ];
+      const FEATURED_STICKER_START = 4;
+      const CODING_STICKER_START = 7;
+
+      Object.assign(CONFIG, {
+        poolSize: 34,
+        spawnWidth: 38,
+        windStrength: 0.35,
+        windFrequency: 0.18,
+        scale: 2.4,
+        codingScale: 3.05,
+        featuredScale: 3.7,
+        featuredChance: 0.45,
+        fallSpeed: 0.95,
+        rotationSpeed: 0.2,
+      });
+
+      const VERTEX_SHADER = /* glsl */ `
+        attribute vec4 uvRect;
+        varying vec2 vAtlasUv;
+        void main() {
+          vAtlasUv = uvRect.xy + uv * uvRect.zw;
+          vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `;
+
+      const FRAGMENT_SHADER = /* glsl */ `
+        uniform sampler2D map;
+        varying vec2 vAtlasUv;
+        void main() {
+          vec4 color = texture2D(map, vAtlasUv);
+          if (color.a < 0.01) discard;
+          gl_FragColor = color;
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }
+      `;
+
+      // 3. 基础场景搭建
+      const canvas = document.getElementById("stage");
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: true,
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        50,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        200,
+      );
+
+      function fitCamera() {
+        const aspect = window.innerWidth / window.innerHeight;
+        const vFovHalf = (camera.fov * Math.PI) / 180 / 2;
+        const hTanHalf = Math.tan(vFovHalf) * aspect;
+        const distance = CONFIG.spawnWidth / 2 / hTanHalf;
+
+        camera.position.set(0, 0, distance);
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+      }
+
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        fitCamera();
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      fitCamera();
+
+      // 4. 图片异步加载与图集（Atlas）拼合逻辑
+      function loadImage(url) {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => {
+            console.warn(
+              `[Sticker Rain] 无法加载图片: ${url}，将生成临时占位块`,
+            );
+            // 兜底：如果某张图 404，生成一个透明底的红色方块，不至于让整个程序崩溃
+            const c = document.createElement("canvas");
+            c.width = 256;
+            c.height = 256;
+            const ctx = c.getContext("2d");
+            resolve(c);
+          };
+          img.src = url;
+        });
+      }
+
+      async function buildAtlas(urls) {
+        const images = await Promise.all(urls.map(loadImage));
+        const cols = 4;
+        const rows = Math.ceil(urls.length / cols);
+        const cell = 256; // 假定单张贴纸解析度上限基准为 256x256
+
+        const atlasCanvas = document.createElement("canvas");
+        atlasCanvas.width = cols * cell;
+        atlasCanvas.height = rows * cell;
+        const ctx = atlasCanvas.getContext("2d");
+        const uvRects = [];
+
+        images.forEach((img, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const cx = col * cell;
+          const cy = row * cell;
+
+          // 保持贴纸比例居中绘制到图集网格中
+          const scale = Math.min(cell / img.width, cell / img.height) * 0.9;
+          const dw = img.width * scale;
+          const dh = img.height * scale;
+          const dx = cx + (cell - dw) / 2;
+          const dy = cy + (cell - dh) / 2;
+          ctx.drawImage(img, dx, dy, dw, dh);
+
+          // 计算该图片在图集中的标准化 UV 坐标区间
+          uvRects.push([
+            cx / atlasCanvas.width,
+            1 - (row + 1) / rows,
+            cell / atlasCanvas.width,
+            cell / atlasCanvas.height,
+          ]);
+        });
+
+        const texture = new THREE.CanvasTexture(atlasCanvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return { texture, uvRects };
+      }
+
+      // 5. 初始化核心流与运行循环
+      async function init() {
+        const { texture, uvRects } = await buildAtlas(STICKER_URLS);
+
+        const material = new THREE.ShaderMaterial({
+          uniforms: { map: { value: texture } },
+          vertexShader: VERTEX_SHADER,
+          fragmentShader: FRAGMENT_SHADER,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const uvRectAttr = new THREE.InstancedBufferAttribute(
+          new Float32Array(CONFIG.poolSize * 4),
+          4,
+        );
+        geometry.setAttribute("uvRect", uvRectAttr);
+
+        const mesh = new THREE.InstancedMesh(
+          geometry,
+          material,
+          CONFIG.poolSize,
+        );
+        mesh.frustumCulled = false;
+        mesh.visible = fallingEnabled;
+        stickerMesh = mesh;
+        scene.add(mesh);
+
+        const particles = new Array(CONFIG.poolSize);
+
+        function spawnParticle(p, index, initial) {
+          const featured = Math.random() < CONFIG.featuredChance;
+          const standardOrCodingIndex = Math.floor(
+            Math.random() * (FEATURED_STICKER_START + 3),
+          );
+          const coding =
+            !featured && standardOrCodingIndex >= FEATURED_STICKER_START;
+          const stickerIndex = featured
+            ? FEATURED_STICKER_START + Math.floor(Math.random() * 3)
+            : standardOrCodingIndex < FEATURED_STICKER_START
+              ? standardOrCodingIndex
+              : CODING_STICKER_START +
+                standardOrCodingIndex -
+                FEATURED_STICKER_START;
+          const [u, v, w, h] = uvRects[stickerIndex];
+          uvRectAttr.setXYZW(index, u, v, w, h);
+
+          const baseScale = featured
+            ? CONFIG.featuredScale
+            : coding
+              ? CONFIG.codingScale
+              : CONFIG.scale;
+          p.scale = baseScale * (0.85 + Math.random() * 0.3);
+
+          const spawnY = initial
+            ? CONFIG.positionY - Math.random() * CONFIG.fallDistance
+            : CONFIG.positionY + Math.random() * 3;
+          let spawnX = 0;
+          for (let attempt = 0; attempt < 24; attempt++) {
+            const candidateX =
+              (Math.random() - 0.5) * CONFIG.spawnWidth;
+            const overlaps = particles.some((other) => {
+              if (!other || other === p) return false;
+              const clearance = (p.scale + other.scale) * 0.42;
+              return (
+                Math.abs(other.x - candidateX) < clearance &&
+                Math.abs(other.y - spawnY) < clearance
+              );
+            });
+            spawnX = candidateX;
+            if (!overlaps) break;
+          }
+
+          p.x = spawnX;
+          p.y = spawnY;
+          p.z = CONFIG.zOffset + Math.random() * CONFIG.zDepth;
+          p.rotation = Math.random() * Math.PI * 2;
+          p.rotationDir = Math.random() < 0.5 ? -1 : 1;
+          p.windPhase = Math.random() * Math.PI * 2;
+          p.speedMul = featured
+            ? 0.9 + Math.random() * 0.25
+            : 0.55 + Math.random() * 0.3;
+        }
+
+        for (let i = 0; i < CONFIG.poolSize; i++) {
+          particles[i] = {};
+          spawnParticle(particles[i], i, true);
+        }
+        uvRectAttr.needsUpdate = true;
+
+        // 6. 动画循环（直接对底层 Float32Array 二进制指针进行改写，规避每帧分配矩阵对象的开销）
+        const clock = new THREE.Clock();
+        const matrixArray = mesh.instanceMatrix.array;
+
+        function animate() {
+          requestAnimationFrame(animate);
+
+          const delta = Math.min(clock.getDelta(), 0.05);
+          const elapsed = clock.getElapsedTime();
+
+          if (!fallingEnabled) {
+            renderer.render(scene, camera);
+            return;
+          }
+
+          for (let i = 0; i < CONFIG.poolSize; i++) {
+            const p = particles[i];
+
+            // 物理下落更新
+            p.y -= CONFIG.fallSpeed * p.speedMul * delta;
+            if (p.y < CONFIG.positionY - CONFIG.fallDistance) {
+              spawnParticle(p, i, false);
+              uvRectAttr.needsUpdate = true;
+            }
+            p.rotation += CONFIG.rotationSpeed * p.rotationDir * delta;
+
+            // 摇摆与缩放
+            const windX =
+              Math.sin(elapsed * CONFIG.windFrequency + p.windPhase) *
+              CONFIG.windStrength;
+            const currentX = p.x + windX;
+            const s = p.scale;
+
+            // 快速正余弦
+            const cos = Math.cos(p.rotation) * s;
+            const sin = Math.sin(p.rotation) * s;
+
+            // 借助位运算 (i << 4) 极速定位当前实例在矩阵数组（16位）中的偏移量
+            const idx = i << 4;
+
+            matrixArray[idx] = cos;
+            matrixArray[idx + 1] = sin;
+
+            matrixArray[idx + 4] = -sin;
+            matrixArray[idx + 5] = cos;
+
+            matrixArray[idx + 10] = s; // Z 轴等比缩放
+
+            matrixArray[idx + 12] = currentX; // 平移 X
+            matrixArray[idx + 13] = p.y; // 平移 Y
+            matrixArray[idx + 14] = p.z; // 平移 Z
+          }
+
+          mesh.instanceMatrix.needsUpdate = true;
+          renderer.render(scene, camera);
+        }
+
+        animate();
+      }
+
+      init().catch((err) => console.error(err));
+    </script>
+  </body>
+</html>
