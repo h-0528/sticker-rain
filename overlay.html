@@ -133,6 +133,7 @@
           if (event.data.completed || event.data.elapsed >= 15 * 60 * 60) startFireworks();
         }
         if (["sticker-timer-complete", "sticker-fireworks", "sticker-firework"].includes(event.data?.type)) startFireworks();
+        if (event.data?.type === "sticker-fireworks-stop") stopFireworks();
         if (event.data?.type === "sticker-logout") {
           fallingEnabled = true;
           if (stickerMesh) stickerMesh.visible = true;

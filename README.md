@@ -95,6 +95,7 @@ frame.contentWindow.postMessage(
 | `sticker-timer-stop` | 结束计时，停止并隐藏贴纸 |
 | `sticker-timer-complete` | 计时达到 15 小时，触发全屏烟花 |
 | `sticker-fireworks` / `sticker-firework` | 手动烟花按钮触发同款全屏烟花 |
+| `sticker-fireworks-stop` | 立即停止正在播放的烟花 |
 
 烟花从屏幕底部发射，持续 10 秒；播放期间按空格键可以立即取消。计时页达到 15 小时后应发送 `{ type: "sticker-timer-complete" }`。手动按钮应发送 `{ type: "sticker-fireworks" }`，这样按钮可以放在计时按钮旁边并复用同一效果。也可以在停止消息中携带 `completed: true` 触发烟花。
 | `sticker-logout` | 退出登录，重新显示贴纸 |
