@@ -4,10 +4,11 @@
 
 ## 在线预览
 
-- 完整预览：https://h-0528.github.io/sticker-rain/
-- 透明贴纸层：https://h-0528.github.io/sticker-rain/overlay.html
+- 完整页面效果预览：https://h-0528.github.io/sticker-rain/
+- 可点击的透明贴纸层：https://h-0528.github.io/sticker-rain/overlay.html
 
 `index.html` 用于独立预览完整效果，`overlay.html` 是嵌入原网站的透明贴纸层。
+点击冲击波请在 `overlay.html` 中直接测试。完整页面预览包含跨域 iframe，只有追踪网站加入点击坐标转发后，内层页面的点击才能触发贴纸冲击波。
 
 ## 功能
 
