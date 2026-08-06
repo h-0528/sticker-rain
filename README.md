@@ -93,6 +93,7 @@ frame.contentWindow.postMessage(
 | `sticker-timer-start` | 开始计时，显示并继续下落 |
 | `sticker-timer-stop` | 结束计时，停止并隐藏贴纸 |
 | `sticker-logout` | 退出登录，重新显示贴纸 |
+| `sticker-burst` | 按照消息中的点击坐标弹开附近贴纸 |
 
 `overlay.html` 会检查消息来源，目前只接受来自 `https://ysyx.200502.xyz` 的消息。
 
@@ -124,6 +125,9 @@ const STICKER_URLS = [
 | `edgeLaneStart` | 左右边缘区域的起始位置 |
 | `overlapPadding` | 贴纸之间保留的间距 |
 | `separationStrength` | 下落过程中自动分离重叠贴纸的力度 |
+| `burstRadius` | 点击冲击波影响范围 |
+| `burstForce` | 点击弹开力度 |
+| `burstDamping` | 弹开速度的衰减系数 |
 
 画布透明度可以修改 `#stage` 的 `opacity`。
 

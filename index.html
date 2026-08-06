@@ -47,6 +47,7 @@
     <script>
       let fallingEnabled = true;
       let stickerMesh = null;
+      let burstHandler = null;
       const siteFrame = document.getElementById("site-content");
 
       window.addEventListener("message", (event) => {
@@ -72,6 +73,13 @@
         if (event.data?.type === "sticker-logout") {
           fallingEnabled = true;
           if (stickerMesh) stickerMesh.visible = true;
+        }
+        if (
+          event.data?.type === "sticker-burst" &&
+          fallingEnabled &&
+          burstHandler
+        ) {
+          burstHandler(event.data);
         }
       });
     </script>
@@ -133,6 +141,9 @@
         edgeLaneStart: 0.62,
         overlapPadding: 0.58,
         separationStrength: 0.08,
+        burstRadius: 6.5,
+        burstForce: 7,
+        burstDamping: 0.9,
         fallSpeed: 0.95,
         rotationSpeed: 0.2,
       });
@@ -346,6 +357,8 @@
           p.y = spawnY;
           p.z = CONFIG.zOffset + Math.random() * CONFIG.zDepth;
           p.featured = featured;
+          p.velocityX = 0;
+          p.velocityY = 0;
           p.rotation = Math.random() * Math.PI * 2;
           p.rotationDir = Math.random() < 0.5 ? -1 : 1;
           p.windPhase = Math.random() * Math.PI * 2;
@@ -359,6 +372,46 @@
           spawnParticle(particles[i], i, true);
         }
         uvRectAttr.needsUpdate = true;
+
+        burstHandler = ({ x, y }) => {
+          const normalizedX = Number(x);
+          const normalizedY = Number(y);
+          if (!Number.isFinite(normalizedX) || !Number.isFinite(normalizedY)) {
+            return;
+          }
+
+          const clickX =
+            (Math.max(0, Math.min(1, normalizedX)) - 0.5) *
+            CONFIG.spawnWidth;
+          const visibleHeight = CONFIG.spawnWidth / camera.aspect;
+          const clickY =
+            (0.5 - Math.max(0, Math.min(1, normalizedY))) * visibleHeight;
+
+          particles.forEach((p, index) => {
+            let dx = p.x - clickX;
+            let dy = p.y - clickY;
+            let distance = Math.hypot(dx, dy);
+            const hitRadius = p.scale * 0.55;
+            const effectRadius = CONFIG.burstRadius + hitRadius;
+            if (distance >= effectRadius) return;
+
+            if (distance < 0.001) {
+              const angle = (index / particles.length) * Math.PI * 2;
+              dx = Math.cos(angle);
+              dy = Math.sin(angle);
+              distance = 1;
+            }
+
+            const influence = 1 - distance / effectRadius;
+            const directHitBoost = distance <= hitRadius ? 1.35 : 1;
+            const force =
+              CONFIG.burstForce *
+              (0.25 + influence * 0.75) *
+              directHitBoost;
+            p.velocityX += (dx / distance) * force;
+            p.velocityY += (dy / distance) * force;
+          });
+        };
 
         function separateParticles() {
           for (let i = 0; i < particles.length; i++) {
@@ -412,6 +465,11 @@
             const p = particles[i];
 
             // 物理下落更新
+            p.x += p.velocityX * delta;
+            p.y += p.velocityY * delta;
+            const damping = Math.pow(CONFIG.burstDamping, delta * 60);
+            p.velocityX *= damping;
+            p.velocityY *= damping;
             p.y -= CONFIG.fallSpeed * p.speedMul * delta;
             if (p.y < CONFIG.positionY - CONFIG.fallDistance) {
               spawnParticle(p, i, false);
