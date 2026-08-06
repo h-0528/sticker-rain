@@ -119,6 +119,9 @@ const STICKER_URLS = [
 | `codingScale` | 编程主题贴纸尺寸 |
 | `featuredScale` | 校徽、ICIL 和一生一芯贴纸尺寸 |
 | `featuredChance` | 特色贴纸出现概率 |
+| `featuredMax` | 校徽、ICIL 和一生一芯贴纸的同屏上限 |
+| `edgeLaneChance` | 贴纸优先从左右边缘下落的概率 |
+| `edgeLaneStart` | 左右边缘区域的起始位置 |
 
 画布透明度可以修改 `#stage` 的 `opacity`。
 
