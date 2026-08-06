@@ -128,8 +128,10 @@
         featuredScale: 3.7,
         featuredChance: 0.22,
         featuredMax: 3,
-        edgeLaneChance: 0.88,
-        edgeLaneStart: 0.68,
+        edgeLaneChance: 0.42,
+        edgeLaneStart: 0.62,
+        overlapPadding: 0.58,
+        separationStrength: 0.08,
         fallSpeed: 0.95,
         rotationSpeed: 0.2,
       });
@@ -317,7 +319,7 @@
             ? CONFIG.positionY - Math.random() * CONFIG.fallDistance
             : CONFIG.positionY + Math.random() * 3;
           let spawnX = 0;
-          for (let attempt = 0; attempt < 24; attempt++) {
+          for (let attempt = 0; attempt < 40; attempt++) {
             const halfWidth = CONFIG.spawnWidth / 2;
             const edgePadding = Math.min(p.scale * 0.45, halfWidth * 0.12);
             const usableHalfWidth = halfWidth - edgePadding;
@@ -328,10 +330,11 @@
               : (Math.random() - 0.5) * edgeStart * 2;
             const overlaps = particles.some((other) => {
               if (!other || other === p) return false;
-              const clearance = (p.scale + other.scale) * 0.42;
+              const clearance =
+                (p.scale + other.scale) * CONFIG.overlapPadding;
               return (
                 Math.abs(other.x - candidateX) < clearance &&
-                Math.abs(other.y - spawnY) < clearance
+                Math.abs(other.y - spawnY) < clearance * 0.72
               );
             });
             spawnX = candidateX;
@@ -355,6 +358,39 @@
           spawnParticle(particles[i], i, true);
         }
         uvRectAttr.needsUpdate = true;
+
+        function separateParticles() {
+          for (let i = 0; i < particles.length; i++) {
+            const a = particles[i];
+            for (let j = i + 1; j < particles.length; j++) {
+              const b = particles[j];
+              const dx = a.x - b.x;
+              const dy = Math.abs(a.y - b.y);
+              const minDistance =
+                (a.scale + b.scale) * CONFIG.overlapPadding;
+              const verticalDistance = minDistance * 0.72;
+
+              if (Math.abs(dx) >= minDistance || dy >= verticalDistance) {
+                continue;
+              }
+
+              const direction = dx === 0 ? (i % 2 ? 1 : -1) : Math.sign(dx);
+              const verticalFactor = 1 - dy / verticalDistance;
+              const push =
+                (minDistance - Math.abs(dx)) *
+                verticalFactor *
+                CONFIG.separationStrength;
+              a.x += direction * push;
+              b.x -= direction * push;
+            }
+          }
+
+          const halfWidth = CONFIG.spawnWidth / 2;
+          particles.forEach((p) => {
+            const limit = Math.max(0, halfWidth - p.scale * 0.5);
+            p.x = Math.max(-limit, Math.min(limit, p.x));
+          });
+        }
 
         // 6. 动画循环（直接对底层 Float32Array 二进制指针进行改写，规避每帧分配矩阵对象的开销）
         const clock = new THREE.Clock();
@@ -381,6 +417,12 @@
               uvRectAttr.needsUpdate = true;
             }
             p.rotation += CONFIG.rotationSpeed * p.rotationDir * delta;
+          }
+
+          separateParticles();
+
+          for (let i = 0; i < CONFIG.poolSize; i++) {
+            const p = particles[i];
 
             // 摇摆与缩放
             const windX =

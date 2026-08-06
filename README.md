@@ -122,6 +122,8 @@ const STICKER_URLS = [
 | `featuredMax` | 校徽、ICIL 和一生一芯贴纸的同屏上限 |
 | `edgeLaneChance` | 贴纸优先从左右边缘下落的概率 |
 | `edgeLaneStart` | 左右边缘区域的起始位置 |
+| `overlapPadding` | 贴纸之间保留的间距 |
+| `separationStrength` | 下落过程中自动分离重叠贴纸的力度 |
 
 画布透明度可以修改 `#stage` 的 `opacity`。
 
