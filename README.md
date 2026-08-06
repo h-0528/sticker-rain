@@ -4,11 +4,11 @@
 
 ## 在线预览
 
-- 完整页面效果预览：https://h-0528.github.io/sticker-rain/
+- 静态叠加预览（不支持登录和计时联动）：https://h-0528.github.io/sticker-rain/
 - 可点击的透明贴纸层：https://h-0528.github.io/sticker-rain/overlay.html
 
 `index.html` 用于独立预览完整效果，`overlay.html` 是嵌入原网站的透明贴纸层。
-点击冲击波请在 `overlay.html` 中直接测试。完整页面预览包含跨域 iframe，只有追踪网站加入点击坐标转发后，内层页面的点击才能触发贴纸冲击波。
+点击冲击波请在 `overlay.html` 中直接测试。静态叠加预览包含跨域 iframe，无法读取内层网站的登录和计时状态，因此不能用它验收状态联动。状态联动需要在追踪网站嵌入 `overlay.html` 后测试。
 
 ## 功能
 
@@ -96,7 +96,7 @@ frame.contentWindow.postMessage(
 | `sticker-logout` | 退出登录，重新显示贴纸 |
 | `sticker-burst` | 按照消息中的点击坐标弹开附近贴纸 |
 
-`overlay.html` 会检查消息来源，目前只接受来自 `https://ysyx.200502.xyz` 的消息。
+`overlay.html` 只接受直接父页面发送的消息，因此既支持正式网站，也支持作者在本地服务器中审核状态联动。
 
 ## 自定义贴纸
 

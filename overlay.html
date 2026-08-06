@@ -50,12 +50,7 @@
       let stickerMesh = null;
       let burstHandler = null;
       window.addEventListener("message", (event) => {
-        if (
-          event.source !== window.parent ||
-          event.origin !== "https://ysyx.200502.xyz"
-        ) {
-          return;
-        }
+        if (event.source !== window.parent) return;
 
         if (event.data?.type === "sticker-login-success") {
           fallingEnabled = false;
