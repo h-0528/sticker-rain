@@ -88,8 +88,7 @@
         const elapsed = now - fireworks.started;
         if (elapsed >= 10000) return stopFireworks();
         const ctx = fireworksContext;
-        ctx.fillStyle = "rgba(5, 8, 20, 0.16)";
-        ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+        ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
         ctx.globalCompositeOperation = "lighter";
         fireworks.rockets = fireworks.rockets.filter((rocket) => {
           rocket.y -= rocket.speed;
